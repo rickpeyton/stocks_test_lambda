@@ -1,53 +1,61 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
-Description: API Gateway with Lambda Token Authorizer
+Transform: 'AWS::Serverless-2016-10-31'
+
 Resources:
-  MyApi:
+  stocksLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: stocksLambda
+      Handler: lambda.handler
+      Runtime: ruby2.5
+      CodeUri: "./"
+      MemorySize: 128
+      Timeout: 5
+      Events:
+        stocksLambdaApi:
+            Type: Api
+            Properties:
+                Path: /
+                Method: get
+                RestApiId: !Ref stocksLambdaApi
+  stocksLambdaApi:
     Type: AWS::Serverless::Api
     Properties:
+      Name: stocksLambdaApi
       StageName: Prod
-      Auth:
-        DefaultAuthorizer: MyLambdaTokenAuthorizer
-        Authorizers:
-          MyLambdaTokenAuthorizer:
-            FunctionArn: !GetAtt MyAuthFunction.Arn
-            # NOTE: Additional options:
-            # FunctionInvokeRole: !Ref MyRole
-            # Identity:
-              # Header: Auth
-              # ValidationExpression: Bearer.*
-              # ReauthorizeEvery: 30 # seconds
-
-  MyFunction:
-    Type: AWS::Serverless::Function
+      DefinitionBody:
+        swagger: '2.0'
+        basePath: '/Prod'
+        info:
+          title: !Ref AWS::StackName
+        paths:
+          /prices:
+            get:
+              responses: {}
+              x-amazon-apigateway-integration:
+                uri:
+                  !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${stocksLambdaFunction.Arn}/invocations'
+                passthroughBehavior: "when_no_match"
+                httpMethod: POST
+                type: "aws_proxy"
+          /stock:
+            get:
+              responses: {}
+              x-amazon-apigateway-integration:
+                uri:
+                  !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${stocksLambdaFunction.Arn}/invocations'
+                passthroughBehavior: "when_no_match"
+                httpMethod: POST
+                type: "aws_proxy"
+  ConfigLambdaPermission:
+    Type: "AWS::Lambda::Permission"
+    DependsOn:
+    - stocksLambdaFunction
     Properties:
-      CodeUri: ./src
-      Handler: index.handler
-      Runtime: nodejs8.10
-      Events:
-        GetRoot:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /
-            Method: get
-            Auth:
-              Authorizer: NONE
-        GetUsers:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: /users
-            Method: get
-  
-  MyAuthFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: ./src
-      Handler: authorizer.handler
-      Runtime: nodejs8.10
-
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref stocksLambdaFunction
+      Principal: apigateway.amazonaws.com
 Outputs:
-  ApiURL:
-    Description: "API URL"
-    Value: !Sub 'https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/'
+  stocksLambdaAppUrl:
+    Description: App endpoint URL
+    Value: !Sub "https://${stocksLambdaApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
